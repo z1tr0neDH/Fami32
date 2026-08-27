@@ -164,16 +164,24 @@ extern "C" int app_main(void) {
 
 #else
 
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
 #include "keypad_io.h"
-#include <MPR121_Keypad.h>
 #include <gfx_oled_ssd1306.h>
 #include <driver/i2s_std.h>
+#include <driver/gpio.h>
 #include "fami32_pin.h"
+#include "fami32_factory_test.h"
+#include "fami32_storage.h"
+#include "nau88c22.h"
 #include "ftm_file.h"
 #include "fami32_player.h"
 #include <dirent.h>
 #include "esp_vfs_fat.h"
 #include "esp_partition.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "gui/gui_common.h"
 #include "gui/gui_input.h"
@@ -201,21 +209,15 @@ extern "C" {
 }
 
 FAMI_PLAYER player;
-i2s_chan_handle_t i2s_tx_handle;
+i2s_chan_handle_t i2s_tx_handle = nullptr;
+static i2s_chan_handle_t codec_i2s_tx_handle = nullptr;
 TaskHandle_t SOUND_TASK_HD = NULL;
 TaskHandle_t GUI_TASK = NULL;
 TaskHandle_t KEYPAD_TASK_HD = NULL;
 USBMIDI MIDI;
 esp_lcd_panel_handle_t panel;
 GfxOledSSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-static const uint8_t kKeypadRows[KEYPAD_ROWS] = {KEYPAD_R0, KEYPAD_R1, KEYPAD_R2, KEYPAD_R3};
-static const uint8_t kKeypadCols[KEYPAD_COLS] = {KEYPAD_C0, KEYPAD_C1, KEYPAD_C2};
-KeypadIO keypad(reinterpret_cast<const uint8_t *>(KEYPAD_MAP),
-                kKeypadRows,
-                kKeypadCols,
-                KEYPAD_ROWS,
-                KEYPAD_COLS);
-MPR121_Keypad touchKeypad(TOUCHPAD0_ADDRS, TOUCHPAD1_ADDRS);
+KeypadIO keypad;
 
 static constexpr size_t MIDI_TIMELINE_QUEUE_SIZE = 256;
 static constexpr int64_t MIDI_TIMELINE_LATENCY_MARGIN_US = 3000;
@@ -360,19 +362,27 @@ static void midi_timeline_dispatch_due(uint64_t sample_time, void *user) {
     }
 }
 
-void sound_task(void *arg) {
-    player.init(&ftm);
+static esp_err_t init_i2s_output(i2s_port_t port,
+                                 gpio_num_t mclk,
+                                 gpio_num_t bclk,
+                                 gpio_num_t ws,
+                                 gpio_num_t dout,
+                                 i2s_chan_handle_t *handle) {
+    i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(port, I2S_ROLE_MASTER);
+    esp_err_t err = i2s_new_channel(&channel_config, handle, nullptr);
+    if (err != ESP_OK) return err;
 
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
-    i2s_new_channel(&chan_cfg, &i2s_tx_handle, NULL);
-    i2s_std_config_t std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG((uint32_t)SAMP_RATE),
-        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+    i2s_std_clk_config_t clock_config = I2S_STD_CLK_DEFAULT_CONFIG(48000);
+    clock_config.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+    const i2s_std_config_t standard_config = {
+        .clk_cfg = clock_config,
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
+            I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = (gpio_num_t)PCM5102A_BCK,
-            .ws = (gpio_num_t)PCM5102A_WS,
-            .dout = (gpio_num_t)PCM5102A_DIN,
+            .mclk = mclk,
+            .bclk = bclk,
+            .ws = ws,
+            .dout = dout,
             .din = I2S_GPIO_UNUSED,
             .invert_flags = {
                 .mclk_inv = false,
@@ -381,31 +391,75 @@ void sound_task(void *arg) {
             },
         },
     };
+    if ((err = i2s_channel_init_std_mode(*handle, &standard_config)) != ESP_OK) return err;
+    return i2s_channel_enable(*handle);
+}
 
-    i2s_channel_init_std_mode(i2s_tx_handle, &std_cfg);
-    i2s_channel_enable(i2s_tx_handle);
+void sound_task(void *arg) {
+    (void)arg;
+    player.init(&ftm);
 
-    size_t written;
+    const bool codec_ready = fami32_codec_init() == ESP_OK;
+    ESP_ERROR_CHECK(init_i2s_output(
+        static_cast<i2s_port_t>(SPEAKER_I2S_PORT),
+        I2S_GPIO_UNUSED,
+        static_cast<gpio_num_t>(SPEAKER_I2S_BCLK_GPIO),
+        static_cast<gpio_num_t>(SPEAKER_I2S_WS_GPIO),
+        static_cast<gpio_num_t>(SPEAKER_I2S_DOUT_GPIO),
+        &i2s_tx_handle));
+    if (codec_ready) {
+        ESP_ERROR_CHECK(init_i2s_output(
+            static_cast<i2s_port_t>(CODEC_I2S_PORT),
+            static_cast<gpio_num_t>(CODEC_I2S_MCLK_GPIO),
+            static_cast<gpio_num_t>(CODEC_I2S_BCLK_GPIO),
+            static_cast<gpio_num_t>(CODEC_I2S_WS_GPIO),
+            static_cast<gpio_num_t>(CODEC_I2S_DOUT_GPIO),
+            &codec_i2s_tx_handle));
+    }
+
+    std::vector<int16_t> stereo_buffer(player.get_buf_size() * 2, 0);
+    size_t written = 0;
+    i2s_channel_write(i2s_tx_handle, stereo_buffer.data(),
+                      stereo_buffer.size() * sizeof(int16_t), &written, portMAX_DELAY);
+    if (codec_i2s_tx_handle != nullptr) {
+        i2s_channel_write(codec_i2s_tx_handle, stereo_buffer.data(),
+                          stereo_buffer.size() * sizeof(int16_t), &written, portMAX_DELAY);
+        vTaskDelay(pdMS_TO_TICKS(10));
+        ESP_ERROR_CHECK(fami32_codec_set_muted(false));
+    }
+    keypad.setAudioReady(true);
+
     player.reset_audio_sample_clock();
     midi_timeline_reset();
 
     for (;;) {
         player.process_tick(midi_timeline_next_event, midi_timeline_dispatch_due, NULL);
         for (int i = 0; i < player.get_buf_size(); i++) {
-            player.get_buf()[i] = (player.get_buf()[i] * g_vol) >> 5;
+            int32_t sample = (static_cast<int32_t>(player.get_buf()[i]) * g_vol) >> 5;
+            if (sample > INT16_MAX) sample = INT16_MAX;
+            if (sample < INT16_MIN) sample = INT16_MIN;
+            stereo_buffer[i * 2] = static_cast<int16_t>(sample);
+            stereo_buffer[i * 2 + 1] = static_cast<int16_t>(sample);
         }
-        i2s_channel_write(i2s_tx_handle, player.get_buf(), player.get_buf_size_byte(), &written, portMAX_DELAY);
+        i2s_channel_write(i2s_tx_handle, stereo_buffer.data(),
+                          stereo_buffer.size() * sizeof(int16_t), &written, portMAX_DELAY);
+        if (codec_i2s_tx_handle != nullptr) {
+            i2s_channel_write(codec_i2s_tx_handle, stereo_buffer.data(),
+                              stereo_buffer.size() * sizeof(int16_t), &written, portMAX_DELAY);
+        }
     }
 }
 
 void keypad_task(void *arg) {
-    touchKeypad.begin();
+    (void)arg;
     for (;;) {
         keypad.tick();
-        touchKeypad.tick();
-        while (touchKeypad.available()) {
-            touchKeypadEvent e = touchKeypad.read();
-            touch_input_push_event(e.bit.KEY, e.bit.EVENT);
+        const int volume_delta = keypad.takeVolumeDelta();
+        if (volume_delta != 0) {
+            g_vol += volume_delta;
+            if (g_vol < 0) g_vol = 0;
+            if (g_vol > 64) g_vol = 64;
+            ESP_LOGI("Fami32Volume", "volume=%d", g_vol);
         }
         vTaskDelay(2);
     }
@@ -415,6 +469,16 @@ esp_lcd_panel_handle_t oled_init(void)
 {
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_handle_t panel_handle = NULL;
+
+    gpio_config_t power_config = {};
+    power_config.pin_bit_mask = (1ULL << DISPLAY_POWER_EN);
+    power_config.mode = GPIO_MODE_OUTPUT;
+    power_config.pull_up_en = GPIO_PULLUP_DISABLE;
+    power_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    power_config.intr_type = GPIO_INTR_DISABLE;
+    ESP_ERROR_CHECK(gpio_config(&power_config));
+    ESP_ERROR_CHECK(gpio_set_level(static_cast<gpio_num_t>(DISPLAY_POWER_EN), 1));
+    vTaskDelay(pdMS_TO_TICKS(20));
 
     spi_bus_config_t buscfg = {
         .mosi_io_num = DISPLAY_SDA,
@@ -452,9 +516,13 @@ esp_lcd_panel_handle_t oled_init(void)
         )
     );
 
+    esp_lcd_panel_ssd1306_config_t ssd1306_config = {
+        .height = DISPLAY_HEIGHT,
+    };
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = DISPLAY_RESET,
         .bits_per_pixel = 1,
+        .vendor_config = &ssd1306_config,
     };
 
     ESP_ERROR_CHECK(
@@ -590,13 +658,25 @@ uint8_t const usb_cfg_desc_midi[] = {
 };
 
 extern "C" void app_main(void) {
+    touch_input_init();
     panel = oled_init();
     display.begin(panel);
-    keypad.begin();
-    if (boot_check()) show_check_info(&display, &keypad);
-    keypad.tick();
-    if (keypad.isPressed(KEY_BACK)) boot_router_set_mode(USB_MSC);
+    ESP_ERROR_CHECK(keypad.begin() ? ESP_OK : ESP_FAIL);
+    for (int i = 0; i < 5; ++i) {
+        keypad.tick();
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+
+    /* Consume a routed restart before interpreting the same held boot keys. */
     boot_router();
+    if (boot_check()) show_check_info(&display, &keypad);
+    if (keypad.volumeUpPressed() && keypad.volumeDownPressed()) {
+        fami32_factory_test(&display, &keypad);
+    }
+    if (keypad.volumeDownPressed() || keypad.isPressed(KEY_BACK)) {
+        boot_router_set_mode(USB_MSC);
+    }
+    keypad.clear();
     
     vTaskDelay(128);
 
@@ -609,6 +689,7 @@ extern "C" void app_main(void) {
     wl_handle_t wl_flash_handle;
     esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "flash", &fat_conf, &wl_flash_handle);
     printf("\nFatFS mount %d: %s\n", ret, esp_err_to_name(ret));
+    fami32_storage_init(keypad.sdCardPresent());
 
     if (read_config(config_path) != CONFIG_SUCCESS) {
         display.setCursor(0, 59);
@@ -640,6 +721,16 @@ extern "C" void app_main(void) {
     get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
     get_config_value("VOLUME", CONFIG_INT, &g_vol);
     bool config_migrated = false;
+    if (SAMP_RATE != 48000) {
+        SAMP_RATE = 48000;
+        set_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE);
+        config_migrated = true;
+    }
+    if (g_vol < 0 || g_vol > 64) {
+        g_vol = g_vol < 0 ? 0 : 64;
+        set_config_value("VOLUME", CONFIG_INT, &g_vol);
+        config_migrated = true;
+    }
     int midi_output = _midi_output ? 1 : 0;
     if (get_config_value("MIDI_OUT", CONFIG_INT, &midi_output) == CONFIG_SUCCESS) {
         _midi_output = midi_output != 0;
@@ -673,9 +764,8 @@ extern "C" void app_main(void) {
     }
     keypad.read();
 
-    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 20, &SOUND_TASK_HD, 0);
-    touch_input_init();
     xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, &KEYPAD_TASK_HD, 1);
+    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 20, &SOUND_TASK_HD, 0);
 
     MIDI.setCallback(midi_callback);
 

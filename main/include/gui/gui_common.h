@@ -18,9 +18,6 @@
 #endif
 #include <gfx_oled_ssd1306.h>
 #include "keypad_io.h"
-#ifndef FAMI32_DESKTOP
-#include <MPR121_Keypad.h>
-#endif
 #include <USBMIDI.h>
 #include "ringbuf.h"
 #include "fami32_pin.h"

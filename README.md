@@ -32,7 +32,9 @@ Keyboard controls:
 
 Fami32 是一套运行在 ESP32-S3 上的  FamiTracker 风格随身 Chiptune 制作固件。
 
-本项目以 FamiTracker Module `.ftm` 为工程格式，支持 5 个 NES 基础通道：`PULSE1`、`PULSE2`、`TRIANGLE`、`NOISE`、`DPCM`。固件会把片内 FAT 分区挂载到 `/flash`，所有乐曲、配置、导出的 WAV、导入的 DPCM/WAV 样本都围绕这个分区工作。
+本项目以 FamiTracker Module `.ftm` 为工程格式，支持 5 个 NES 基础通道：`PULSE1`、`PULSE2`、`TRIANGLE`、`NOISE`、`DPCM`。配置固定保存在片内 `/flash`；开机成功挂载 SD 卡后，乐曲、样本和导出文件优先使用 `/sdcard`，否则自动回退到 `/flash`。
+
+现行实体硬件的完整编译、烧录和首板测试流程见 [docs/HARDWARE_R1_BRINGUP.md](docs/HARDWARE_R1_BRINGUP.md)。
 
 ## 支持
 
@@ -51,18 +53,21 @@ Fami32 是一套运行在 ESP32-S3 上的  FamiTracker 风格随身 Chiptune 制
 
 ### 目标硬件
 
-源码配置目标为 `esp32s3`，默认使用 8 MB Flash 和自定义分区表。
+源码配置目标为 ESP32-S3-WROOM-1-N16R8，使用 16 MB Flash、8 MB Octal PSRAM 和自定义分区表。
 
 关键外设和引脚在 `main/include/hardware/fami32_pin.h` 中定义：
 
 | 模块 | 引脚 / 配置 |
 | --- | --- |
-| OLED | SSD1309/SSD1306 类 128x64 SPI 屏幕，`SCL=17`、`SDA=16`、`DC=7`、`RESET=15`、`CS=6` |
-| 音频输出 | PCM5102A I2S，`BCK=42`、`WS=40`、`DIN=41` |
-| 12 键矩阵键盘 | 行：`47,18,45,46`；列：`38,39,48` |
-| 音符输入键盘 | 两片 MPR121，I2C `SDA=8`、`SCL=9`，地址 `0x5A`、`0x5B` |
-| USB | TinyUSB MIDI / MSC |
-| Flash 分区 | `flash` FAT 分区挂载为 `/flash` |
+| I2C / 输入 | `SCL=38`、`SDA=39`；PCF8575 `0x20` 扫描 6x6 矩阵、音量键和 SD 检测 |
+| OLED | SSD1306 128x64 SPI：`SCK=9`、`MOSI=10`、`DC=11`、`RESET=12`、`CS=13`、`PWR_EN=14` |
+| 扬声器 | MAX98357A / I2S0：`BCLK=15`、`WS=16`、`DOUT=17` |
+| 耳机 | NAU88C22 `0x1A` / I2S1：`MCLK=7`、`BCLK=6`、`WS=5`、`DOUT=4`；`HP_DET=18` |
+| 编码器 | 编码器 1：`41/42`；编码器 2：`2/1`；按压经 PCF8575 矩阵 |
+| SD 卡 | SDMMC 1-bit：`CLK=21`、`CMD=47`、`D0=48` |
+| 电池 | `BAT_ADC=8`，1.8 MΩ / 100 kΩ 分压 |
+| USB | GPIO19/20 原生 USB，TinyUSB MIDI / MSC |
+| 存储 | 片内 `/flash`；SD 成功挂载后数据目录为 `/sdcard` |
 
 ### 分区
 
@@ -70,13 +75,14 @@ Fami32 是一套运行在 ESP32-S3 上的  FamiTracker 风格随身 Chiptune 制
 
 | 分区 | 类型 | 地址 | 大小 | 用途 |
 | --- | --- | --- | --- | --- |
-| `app` | factory app | `0x10000` | `0x100000` | 固件程序 |
-| `flash` | FAT data | `0x110000` | `0x6E0000` | 乐曲、配置、样本、导出 WAV |
-| `coredump` | coredump | `0x7F0000` | `0x10000` | 崩溃转储 |
+| `nvs` | NVS data | `0x9000` | `0x6000` | 非易失设置 |
+| `app` | factory app | `0x10000` | `0x300000` | 固件程序 |
+| `flash` | FAT data | `0x310000` | `0xCE0000` | 配置及无 SD 时的数据文件 |
+| `coredump` | coredump | `0xFF0000` | `0x10000` | 崩溃转储 |
 
 ## 第一次启动
 
-1. 设备上电后初始化 OLED、键盘、Flash FAT 分区、USB MIDI 和音频任务。
+1. 设备上电后初始化 OLED、PCF8575 矩阵、双编码器、Flash FAT、SD、USB MIDI 和双路音频。
 2. 屏幕显示 Fami32 启动画面和版本信息。
 3. 如果 `/flash/FM32CONF.CNF` 不存在，固件会创建默认配置并自动重启。
 4. 启动完成后屏幕提示 `Press any key to continue...`，按任意实体键进入主界面。
@@ -84,11 +90,15 @@ Fami32 是一套运行在 ESP32-S3 上的  FamiTracker 风格随身 Chiptune 制
 
 ### 开机进入 USB MSC
 
-上电后在启动检查阶段按住 `BACK`，固件会重启进入 USB MSC 模式。也可以在主选项菜单中选择 `USB MSC MODE`。
+上电后在启动检查阶段按住 `VOL-` 或 `BACK`，固件会重启进入 USB MSC 模式。也可以在主选项菜单中选择 `USB MSC MODE`。USB MSC 暴露片内 `/flash`，不直接暴露 SD 卡。
+
+### 开机进入工厂自检
+
+复位时同时按住 `VOL-` 与 `VOL+`，进入 PCF8575、NAU88C22、SD、耳机检测、电池、6x6 矩阵、编码器和音量键自检。`OK` 翻页，`BACK` 重启退出。
 
 ## 通用按键说明
 
-设备有两组输入：12 个实体功能键和 16 个音符/数值键。
+设备的现有 UI 使用 12 个逻辑功能键和 16 个音符/数值键。现行矩阵中 SW17-SW20、SW27-SW28 暂无既有 UI 功能，保持空闲，但仍可在工厂模式观察原始状态。
 
 ### 实体键
 
@@ -481,7 +491,7 @@ DPCM Samples 页面管理 DPCM 样本表，并把样本映射到当前乐器的 
 
 | 选项 | 作用 |
 | --- | --- |
-| `IMPORT` | 从 `/flash` 文件选择器中选择 `.wav`、`.dmc` 或 `.dpcm` 导入 |
+| `IMPORT` | 从当前数据目录（优先 `/sdcard`，否则 `/flash`）选择 `.wav`、`.dmc` 或 `.dpcm` 导入 |
 | `RENAME` | 重命名当前样本 |
 | `REMOVE` | 删除当前样本，并同步修正所有乐器的样本引用 |
 | `ASSIGN` | 进入当前样本的音符映射编辑器 |
@@ -596,14 +606,14 @@ Visualization 页面显示每个通道的音高和音量历史轨迹，并在下
 | 选项 | 作用 |
 | --- | --- |
 | `NEW` | 新建空白 `.ftm` 工程，停止播放并重载播放器 |
-| `OPEN` | 从 `/flash` 选择并读取 `.ftm` 文件 |
+| `OPEN` | 从当前数据目录选择并读取 `.ftm` 文件 |
 | `SAVE` | 保存到当前文件；如果当前没有文件名，则进入另存为流程 |
-| `SAVE AS` | 输入文件名并保存为 `/flash/<名称>.ftm` |
+| `SAVE AS` | 输入文件名并保存到当前数据目录 |
 | `EXPORT VGM` | 把当前歌曲导出为 NES APU `.vgm` 文件 |
 
 ### 打开文件
 
-`OPEN` 会调用文件选择器，从 `/flash` 开始浏览。选择文件后：
+`OPEN` 会调用文件选择器，从当前数据目录（SD 挂载成功时为 `/sdcard`，否则为 `/flash`）开始浏览。选择文件后：
 
 - 固件先检查 FTM 头部是否为 `FamiTracker Module`。
 - 当前只支持 FTM 版本 `0x0440`。
@@ -617,7 +627,7 @@ Visualization 页面显示每个通道的音高和音量历史轨迹，并在下
 
 - `SAVE`：如果当前工程来自某个文件，覆盖保存；如果没有当前文件，提示输入名称并保存为 `.ftm`。
 - `SAVE AS`：使用当前文件名去掉扩展名作为默认名称，输入新名称后保存。
-- 保存路径固定为 `/flash/<名称>.ftm`。
+- 保存路径为当前数据目录下的 `<名称>.ftm`。
 
 ### 文件选择器 / 文件管理器
 
@@ -627,7 +637,7 @@ Visualization 页面显示每个通道的音高和音量历史轨迹，并在下
 | --- | --- |
 | `UP` / `DOWN` | 移动文件/目录选择光标 |
 | `OK` | 进入目录或选择文件 |
-| `BACK` | 返回上级目录；在起始目录 `/flash` 时取消选择 |
+| `BACK` | 返回上级目录；在当前数据目录根目录时取消选择 |
 | `MENU` | 打开文件选项菜单 |
 
 文件选项菜单：
@@ -792,7 +802,7 @@ MIDI 通道会用于选择 Fami32 的 `channel_sel_pos`，实际通道范围会�
 
 ### 导入并映射 DPCM 样本
 
-1. 先通过 USB MSC 或其他方式把 `.wav`、`.dmc`、`.dpcm` 文件放入 `/flash`。
+1. 把 `.wav`、`.dmc`、`.dpcm` 文件放入当前数据目录；使用 USB MSC 时写入 `/flash`，使用 SD 时直接复制到 FAT32 卡。
 2. 进入 `DPCM SAMPLES` 页面。
 3. 按 `MENU` -> `IMPORT`，从文件选择器选中样本文件。
 4. 导入后按 `OK` 进入映射编辑器。
@@ -809,8 +819,9 @@ MIDI 通道会用于选择 Fami32 的 `channel_sel_pos`，实际通道范围会�
 | `main/src/gui` | 所有页面、菜单、输入法和触摸音符处理 |
 | `main/src/core` | Fami32 播放器、通道合成、乐器序列处理 |
 | `main/src/audio` | DPCM 编码/解码、波表、频率换算、音频配置 |
-| `main/src/storage` | FTM 文件读写、Frame/Pattern/Instrument/Sequence/DPCM 数据结构 |
-| `main/src/input` | 12 键矩阵键盘、MPR121 音符输入键盘、触摸事件队列 |
+| `main/src/storage` | SD/片内 FAT 路由、FTM 文件读写、Frame/Pattern/Instrument/Sequence/DPCM 数据结构 |
+| `main/src/hardware` | 共用 I2C、NAU88C22、电池采样和工厂自检 |
+| `main/src/input` | PCF8575 6x6 矩阵、双编码器、音量/检测输入和触摸事件队列 |
 | `main/src/usb` | TinyUSB 初始化、USB MSC 模式、预留 UAC 模式 |
 | `components/USBMIDI` | USB MIDI 封装 |
 | `components/gfx_ssd1306` | OLED 显示封装 |

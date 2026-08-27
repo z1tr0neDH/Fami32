@@ -495,7 +495,7 @@ void export_vgm_page() {
     }
 
     displayKeyboard("EXPORT VGM...", current_name, 255);
-    snprintf(target_path, sizeof(target_path), FAMI32_STORAGE_DIR "/%s.vgm", current_name);
+    snprintf(target_path, sizeof(target_path), "%s/%s.vgm", FAMI32_STORAGE_DIR, current_name);
     ESP_LOGI("VGM_EXPORT", "Export NES VGM to %s", target_path);
 
     drawPopupBox("EXPORTING VGM...");
@@ -547,7 +547,7 @@ void menu_file() {
                 strcpy(current_name, "Untitled");
                 displayKeyboard("SAVE...", current_name, 255);
                 ESP_LOGI("FILE", "Save name: %s", current_name);
-                snprintf(target_path, sizeof(target_path), FAMI32_STORAGE_DIR "/%s.ftm", current_name);
+                snprintf(target_path, sizeof(target_path), "%s/%s.ftm", FAMI32_STORAGE_DIR, current_name);
                 drawPopupBox("WRITING...");
                 display.display();
                 ftm.save_as_ftm(target_path);
@@ -566,7 +566,7 @@ void menu_file() {
             }
             displayKeyboard("SAVE AS...", current_name, 255);
             ESP_LOGI("FILE", "Save As name: %s", current_name);
-            snprintf(target_path, sizeof(target_path), FAMI32_STORAGE_DIR "/%s.ftm", current_name);
+            snprintf(target_path, sizeof(target_path), "%s/%s.ftm", FAMI32_STORAGE_DIR, current_name);
             drawPopupBox("WRITING...");
             display.display();
             ftm.save_as_ftm(target_path);
