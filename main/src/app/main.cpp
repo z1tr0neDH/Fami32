@@ -370,7 +370,10 @@ esp_lcd_panel_handle_t oled_init(void)
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
 
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, true, true));
+    /* The installed OLED is physically opposite to the previous controller
+     * orientation.  Flipping both axes rotates the visible image 180 degrees
+     * relative to the previous firmware. */
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, false));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
     return panel_handle;

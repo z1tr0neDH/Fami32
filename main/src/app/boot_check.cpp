@@ -3,6 +3,7 @@
 #include "fonts/rismol_5_7.h"
 #include "git_version.h"
 
+#include "esp_err.h"
 #include <stdint.h>
 
 const char* get_exc_cause_name(uint32_t exc_cause) {
@@ -57,29 +58,39 @@ void show_check_info(GfxOledSSD1306 *display, KeypadIO *keypad) {
     display->setTextColor(0);
     display->setCursor(1, 1);
     display->printf("FAMI32 CRASH!");
-    esp_core_dump_summary_t summary;
-    esp_core_dump_get_summary(&summary);
+    esp_core_dump_summary_t summary = {};
+    const esp_err_t summary_result = esp_core_dump_get_summary(&summary);
 
     display->setFont(&rismol35);
     display->setTextColor(1);
     display->setCursor(0, 11);
 
-    display->println("INFO:");
-    display->printf("TASK \"%s\" @ 0x%08lX\n", summary.exc_task, summary.exc_pc);
-    display->printf("EXCVADDR: 0x%08lX\n", summary.ex_info.exc_vaddr);
-    display->printf("CAUSE: %s\n", get_exc_cause_name(summary.ex_info.exc_cause));
+    if (summary_result == ESP_OK) {
+        display->println("INFO:");
+        display->printf("TASK \"%s\" @ 0x%08lX\n", summary.exc_task, summary.exc_pc);
+        display->printf("EXCVADDR: 0x%08lX\n", summary.ex_info.exc_vaddr);
+        display->printf("CAUSE: %s\n", get_exc_cause_name(summary.ex_info.exc_cause));
 
-    display->setCursor(display->getCursorX(), display->getCursorY() + 2);
+        display->setCursor(display->getCursorX(), display->getCursorY() + 2);
 
-    if (summary.exc_bt_info.depth > 0) {
-        display->printf("Backtrace:\n");
-        for (int i = 0; i < summary.exc_bt_info.depth; i++) {
-            display->printf("0x%08lX ", summary.exc_bt_info.bt[i]);
+        if (summary.exc_bt_info.depth > 0) {
+            display->printf("Backtrace:\n");
+            for (int i = 0; i < summary.exc_bt_info.depth; i++) {
+                display->printf("0x%08lX ", summary.exc_bt_info.bt[i]);
+            }
         }
+    } else {
+        display->println("NO VALID COREDUMP");
+        display->printf("ERROR: %s\n", esp_err_to_name(summary_result));
+        display->println("CHECK SERIAL LOG");
     }
 
     display->setCursor(0, 58);
-    display->printf("SHA: %s (FM32-%s)", summary.app_elf_sha256, get_version_string());
+    if (summary_result == ESP_OK) {
+        display->printf("SHA: %s (FM32-%s)", summary.app_elf_sha256, get_version_string());
+    } else {
+        display->printf("FM32-%s", get_version_string());
+    }
     display->display();
 
     keypad->begin();
@@ -97,20 +108,7 @@ void show_check_info(GfxOledSSD1306 *display, KeypadIO *keypad) {
 }
 
 int boot_check() {
-    esp_reset_reason_t reason = esp_reset_reason();
-
-    switch (reason) {
-        case ESP_RST_PANIC:
-            return -1;
-            break;
-        case ESP_RST_SW:
-        case ESP_RST_POWERON:
-        case ESP_RST_BROWNOUT:
-        case ESP_RST_DEEPSLEEP:
-            return 0;
-            break;
-        default:
-            return 1;
-            break;
-    }
+    /* USB/JTAG resets after flashing are normal on ESP32-S3.  Only an actual
+     * panic reset has a crash record that should route to the crash page. */
+    return esp_reset_reason() == ESP_RST_PANIC;
 }
