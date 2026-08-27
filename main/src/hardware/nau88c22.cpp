@@ -30,9 +30,12 @@ uint16_t s_device_id = 0;
 
 esp_err_t write_register(uint8_t reg, uint16_t value) {
     if (reg > 0x7F || value > 0x1FF) return ESP_ERR_INVALID_ARG;
-    const uint8_t payload[3] = {
-        reg,
-        static_cast<uint8_t>((value >> 8) & 0x01),
+
+    /* The NAU88C22 2-wire write frame is 16 bits, not a separate
+     * register byte followed by a 16-bit value.  The first byte contains
+     * the seven-bit register address and data bit 8. */
+    const uint8_t payload[2] = {
+        static_cast<uint8_t>((reg << 1) | ((value >> 8) & 0x01)),
         static_cast<uint8_t>(value & 0xFF),
     };
     return fami32_i2c_write(NAU88C22_I2C_ADDRESS, payload, sizeof(payload));
@@ -40,7 +43,10 @@ esp_err_t write_register(uint8_t reg, uint16_t value) {
 
 esp_err_t read_register(uint8_t reg, uint16_t *value) {
     if (reg > 0x7F || value == nullptr) return ESP_ERR_INVALID_ARG;
-    const uint8_t address = reg;
+
+    /* For a read, select the register with the same shifted seven-bit
+     * control address used by the write framing, then read its 9-bit value. */
+    const uint8_t address = static_cast<uint8_t>(reg << 1);
     uint8_t payload[2] = {};
     const esp_err_t err = fami32_i2c_write_read(
         NAU88C22_I2C_ADDRESS, &address, 1, payload, sizeof(payload));
