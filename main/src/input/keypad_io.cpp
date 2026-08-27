@@ -83,11 +83,6 @@ KeypadIO::KeypadIO()
       sd_debounce_(0),
       hp_debounce_(0),
       pending_volume_delta_(0),
-      keymap_(nullptr),
-      rowPins_(nullptr),
-      colPins_(nullptr),
-      numRows_(0),
-      numCols_(0),
       head_(0),
       tail_(0),
       count_(0) {
@@ -97,19 +92,6 @@ KeypadIO::KeypadIO()
     memset(encoder_accumulator_, 0, sizeof(encoder_accumulator_));
     memset(encoder_position_, 0, sizeof(encoder_position_));
     memset(keyStates_, 0, sizeof(keyStates_));
-}
-
-KeypadIO::KeypadIO(const uint8_t *keymap,
-                   const uint8_t *rowPins,
-                   const uint8_t *colPins,
-                   size_t numRows,
-                   size_t numCols)
-    : KeypadIO() {
-    keymap_ = keymap;
-    rowPins_ = rowPins;
-    colPins_ = colPins;
-    numRows_ = numRows;
-    numCols_ = numCols;
 }
 
 bool KeypadIO::begin() {
