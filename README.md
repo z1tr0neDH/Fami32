@@ -1,36 +1,13 @@
 # Fami32
 
-## Desktop port
-
-Build the Linux version with Clang (SDL2 development files are required):
-
-```sh
-make linux
-./build/linux/fami32
-```
-
-Cross-compile the Windows version with MinGW-w64. It uses Win32 GDI and
-waveOut directly, so the generated executable does not need SDL:
-
-```sh
-make windows
-```
-
-Desktop songs, exports, samples, and `FM32CONF.CNF` are stored in
-`./fami32_data` relative to the directory where Fami32 is launched.
-
-Keyboard controls:
-
-| Fami32 control | PC keyboard |
-| --- | --- |
-| Up / Down / L / R | Arrow keys |
-| OK / Back | Enter / Escape |
-| Menu / Navi | Tab / Home |
-| S / P | Backspace / Space |
-| Octave up / down | Page Up / Page Down |
-| 16-key note pad | `Z S X D C V G B H N J M , L . ;` |
-
 Fami32 是一套运行在 ESP32-S3 上的  FamiTracker 风格随身 Chiptune 制作固件。
+
+仓库现仅保留面向 FAMI32 实体硬件的 ESP-IDF 固件，不再包含 Linux/Windows 桌面模拟器。
+
+- `main/`：固件业务、硬件驱动和程序入口
+- `components/`：ESP-IDF/Arduino 兼容组件
+- `docs/`：实体硬件编译、烧录与测试文档
+- 根目录：ESP-IDF 工程、分区表及默认配置
 
 本项目以 FamiTracker Module `.ftm` 为工程格式，支持 5 个 NES 基础通道：`PULSE1`、`PULSE2`、`TRIANGLE`、`NOISE`、`DPCM`。配置固定保存在片内 `/flash`；开机成功挂载 SD 卡后，乐曲、样本和导出文件优先使用 `/sdcard`，否则自动回退到 `/flash`。
 

@@ -19,14 +19,7 @@ union keypadEvent {
 
 class KeypadIO {
 public:
-#ifndef FAMI32_DESKTOP
     KeypadIO();
-#endif
-    KeypadIO(const uint8_t *keymap,
-             const uint8_t *rowPins,
-             const uint8_t *colPins,
-             size_t numRows,
-             size_t numCols);
 
     bool begin();
     void tick();
@@ -40,9 +33,6 @@ public:
     keypadEvent read();
     void clear();
 
-#ifdef FAMI32_DESKTOP
-    void inject(uint8_t key, uint8_t event);
-#else
     bool pcfReady() const;
     bool sdCardPresent() const;
     bool headphonesInserted() const;
@@ -53,13 +43,11 @@ public:
     uint64_t rawMatrixState() const;
     uint16_t portSnapshot() const;
     void setAudioReady(bool ready);
-#endif
 
 private:
     void pushEvent(const keypadEvent &event);
     int findKeyIndex(uint8_t key) const;
 
-#ifndef FAMI32_DESKTOP
     bool writePcf(uint16_t value);
     bool readPcf(uint16_t *value);
     bool scanMatrix(uint64_t *raw_state);
@@ -95,13 +83,6 @@ private:
     uint8_t encoder_state_[2];
     int8_t encoder_accumulator_[2];
     int32_t encoder_position_[2];
-#endif
-
-    const uint8_t *keymap_;
-    const uint8_t *rowPins_;
-    const uint8_t *colPins_;
-    size_t numRows_;
-    size_t numCols_;
 
     static constexpr size_t BUFFER_SIZE = 32;
     keypadEvent buffer_[BUFFER_SIZE];

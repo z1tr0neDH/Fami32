@@ -18,34 +18,8 @@
 #define KEY_OCTU    11
 #define FAMI32_LOGICAL_KEY_COUNT 12
 
-/* Desktop simulator keeps the original 4 x 3 logical keypad. */
-#define KEYPAD_ROWS 4
-#define KEYPAD_COLS 3
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
-
-static const uint8_t KEYPAD_MAP[KEYPAD_ROWS][KEYPAD_COLS] = {
-    {KEY_L,    KEY_OK,   KEY_MENU},
-    {KEY_UP,   KEY_S,    KEY_NAVI},
-    {KEY_R,    KEY_BACK, KEY_OCTD},
-    {KEY_DOWN, KEY_P,    KEY_OCTU},
-};
-
-#ifdef FAMI32_DESKTOP
-
-#define FAMI32_STORAGE_DIR "./fami32_data"
-#define FAMI32_NOTE_KEY_COUNT 16
-
-/* Values are placeholders used only by the desktop constructor. */
-#define KEYPAD_R0 0
-#define KEYPAD_R1 1
-#define KEYPAD_R2 2
-#define KEYPAD_R3 3
-#define KEYPAD_C0 0
-#define KEYPAD_C1 1
-#define KEYPAD_C2 2
-
-#else
 
 /* Shared I2C0 bus: PCF8575 (0x20) and NAU88C22 (0x1A). */
 #define FAMI32_I2C_PORT       0
@@ -124,8 +98,6 @@ const char *fami32_storage_dir(void);
 #endif
 
 #define FAMI32_STORAGE_DIR fami32_storage_dir()
-
-#endif /* FAMI32_DESKTOP */
 
 #define DBG_PRINTF(fmt, ...)            \
     do {                                \
