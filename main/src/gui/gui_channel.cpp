@@ -290,7 +290,7 @@ void channel_menu() {
                     }
                 }
             } else if (has_touch_event) {
-                if (touch_event.event == KEY_JUST_PRESSED) {
+                if (touch_event.event == KEY_JUST_PRESSED && touch_event.key < 16) {
                     unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                     if (x_pos == 1) {
                         pt_tmp.instrument = SET_HEX_B1(pt_tmp.instrument, touch_event.key);

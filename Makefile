@@ -35,7 +35,7 @@ CXX_SOURCES := \
 	main/src/app/main.cpp \
 	$(wildcard main/src/core/*.cpp) \
 	$(wildcard main/src/gui/*.cpp) \
-	$(wildcard main/src/storage/*.cpp) \
+	$(filter-out main/src/storage/fami32_storage.cpp,$(wildcard main/src/storage/*.cpp)) \
 	components/Adafruit-GFX-Library/Adafruit_GFX.cpp \
 	components/Adafruit-GFX-Library/Print.cpp \
 	components/Adafruit-GFX-Library/WString.cpp \

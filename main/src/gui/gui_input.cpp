@@ -155,6 +155,10 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
         // Handle touchpad events for letter input
         touch_input_event_t touch_event;
         if (touch_input_pop_event(&touch_event)) {
+            if (touch_event.key >= 16) {
+                vTaskDelay(4);
+                continue;
+            }
             if (touch_event.event == KEY_JUST_PRESSED) {
                 // Append character corresponding to touched key
                 targetStr[charPos] = touch_event.key + charOfst;

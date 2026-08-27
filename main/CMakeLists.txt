@@ -43,11 +43,18 @@ set(GUI_SOURCES
 
 set(INPUT_SOURCES
     src/input/keypad_io.cpp
-    src/input/mpr121_keypad.cpp
     src/input/touch_input.cpp
 )
 
+set(HARDWARE_SOURCES
+    src/hardware/fami32_battery.cpp
+    src/hardware/fami32_factory_test.cpp
+    src/hardware/fami32_i2c.cpp
+    src/hardware/nau88c22.cpp
+)
+
 set(STORAGE_SOURCES
+    src/storage/fami32_storage.cpp
     src/storage/ftm_file.cpp
     src/storage/vgm_exporter.cpp
 )
@@ -65,10 +72,22 @@ idf_component_register(
         ${CONFIG_SOURCES}
         ${CORE_SOURCES}
         ${GUI_SOURCES}
+        ${HARDWARE_SOURCES}
         ${INPUT_SOURCES}
         ${STORAGE_SOURCES}
         ${USB_SOURCES}
-    PRIV_REQUIRES spi_flash esp_timer
+    PRIV_REQUIRES
+        spi_flash
+        esp_timer
+        esp_adc
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_driver_i2s
+        esp_driver_sdmmc
+        esp_driver_spi
+        esp_lcd
+        fatfs
+        sdmmc
     INCLUDE_DIRS
         include
         include/app

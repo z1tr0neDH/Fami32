@@ -9,6 +9,10 @@ typedef struct {
 
 static note_io_assignment_t note_io_assignments[FAMI32_MAX_CHANNELS] = {};
 
+static constexpr uint8_t NOTE_IO_PLAYABLE_KEY_COUNT = 14;
+static constexpr uint8_t NOTE_IO_END_KEY = NOTE_IO_PLAYABLE_KEY_COUNT;
+static constexpr uint8_t NOTE_IO_CUT_KEY = NOTE_IO_PLAYABLE_KEY_COUNT + 1;
+
 static bool note_io_is_channel_assigned(uint8_t channel) {
     if (channel >= FAMI32_MAX_CHANNELS) {
         return false;
@@ -90,13 +94,19 @@ note_io_result_t process_note_io_event(const note_io_event_t &event) {
     result.note = NO_NOTE;
     result.octave = NO_OCT;
 
+    if (event.key >= FAMI32_NOTE_KEY_COUNT) {
+        return result;
+    }
+
     if (event.action == NOTE_IO_ACTION_PRESS) {
-        if (event.key > 13) {
+        if (event.key == NOTE_IO_END_KEY || event.key == NOTE_IO_CUT_KEY) {
             result.has_note = true;
-            result.note = event.key - 1;
+            result.note = event.key == NOTE_IO_END_KEY ? NOTE_END : NOTE_CUT;
             result.octave = 0;
             return result;
         }
+
+        if (event.key >= NOTE_IO_PLAYABLE_KEY_COUNT) return result;
 
         const uint8_t note = (event.key % 12) + 1;
         const uint8_t octave = g_octv + (event.key / 12);
@@ -130,7 +140,7 @@ note_io_result_t process_note_io_event(const note_io_event_t &event) {
         if (touch_note) {
             uint8_t midi_note = 0;
             int8_t midi_channel = channel_sel_pos;
-            if (event.key <= 13) {
+            if (event.key < NOTE_IO_PLAYABLE_KEY_COUNT) {
                 midi_note = item2note((event.key % 12) + 1, g_octv + (event.key / 12));
                 if (!edit_mode) {
                     midi_channel = note_io_find_assignment(midi_note, NOTE_IO_SOURCE_TOUCH, event.key);
@@ -141,10 +151,10 @@ note_io_result_t process_note_io_event(const note_io_event_t &event) {
             }
             if (edit_mode) {
                 player.channel[channel_sel_pos].note_end();
-            } else if (event.key <= 13) {
+            } else if (event.key < NOTE_IO_PLAYABLE_KEY_COUNT) {
                 note_io_preview_note_off(midi_note, NOTE_IO_SOURCE_TOUCH, event.key);
             }
-            if (_midi_output && event.key <= 13) {
+            if (_midi_output && event.key < NOTE_IO_PLAYABLE_KEY_COUNT) {
                 MIDI.noteOff(midi_note, 120, midi_channel);
             }
         }
