@@ -6,6 +6,7 @@
 #include "esp_system.h"
 #include "fami32_battery.h"
 #include "fami32_storage.h"
+#include "fami32_pin.h"
 #include "fonts/rismol_3_5.h"
 #include "fonts/rismol_5_7.h"
 #include "gfx_oled_ssd1306.h"
