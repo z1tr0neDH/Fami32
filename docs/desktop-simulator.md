@@ -2,6 +2,12 @@
 
 PC 模拟器独立位于 `desktop/`，使用根目录 `Makefile` 构建。实体机的 ESP-IDF 构建不包含该目录。
 
+## 下载 Windows 版
+
+打开 [Windows 自动构建页面](https://github.com/z1tr0neDH/Fami32/actions/workflows/build-windows-simulator.yml)，进入最新的绿色构建记录，在页面底部下载 `fami32-windows`，解压后运行 `fami32.exe`。
+
+每次 `main` 中的模拟器或共用源码发生修改，GitHub 会自动重新生成该文件。
+
 ## 构建
 
 ### Linux
