@@ -2,7 +2,7 @@
 
 用于定位实体硬件适配后新增、修改或删除的文件，同时保留仓库结构与 Flash 分区速查。
 
-优先查阅：[适配新增](#5-实体硬件适配新增文件) · [适配修改](#6-原文件适配修改) · [适配删除](#7-已删除)
+优先查阅：[适配新增](#5-实体硬件适配新增文件) · [适配修改](#6-原文件适配修改) · [PC 模拟器恢复](#7-pc-模拟器恢复)
 
 ## 1. 根目录
 
@@ -11,7 +11,9 @@
 | `README.md` | 硬件风险、引脚、按键矩阵和 Flash 分区速查 |
 | `docs/` | 操作手册、硬件测试及工程说明 |
 | `main/` | FAMI32 主程序和硬件驱动 |
+| `desktop/` | PC 模拟器平台适配、键盘输入及兼容接口 |
 | `components/` | 图形、USB MIDI、Arduino 兼容层等组件 |
+| `Makefile` | PC 模拟器的 Linux / Windows 独立构建入口 |
 | `CMakeLists.txt` | ESP-IDF 工程入口和编译设置 |
 | `partitions.csv` | 16 MiB Flash 分区表 |
 | `sdkconfig` | 当前 ESP-IDF 完整配置 |
@@ -106,10 +108,22 @@ Flash 总容量为 16 MiB。Bootloader 和分区表位于应用分区之前。
 | `gfx_ssd1306` | OLED 180°旋转 |
 | `README.md` | 硬件速查文档 |
 
-## 7. 已删除
+## 7. PC 模拟器恢复
 
-| 文件或目录 | 原用途 |
+PC 模拟器恢复自删除前版本，并针对现行代码重新适配。
+
+| 文件或目录 | 状态与作用 |
 | --- | --- |
-| `desktop/` | PC 桌面模拟器 |
-| `Makefile` | 旧构建入口 |
-| `sdkconfig.old` | 旧 ESP-IDF 配置备份 |
+| `Makefile` | 恢复并改为独立桌面入口构建 |
+| `desktop/src/desktop_main.cpp` | 新增的 PC 模拟器入口；不写入实体机 `main.cpp` |
+| `desktop/src/desktop_platform.cpp` | 恢复 Linux SDL2、Windows Win32 显示、音频和键盘映射 |
+| `desktop/src/keypad_io_desktop.cpp` | 恢复 PC 键盘事件输入实现 |
+| `desktop/include/fami32_pin.h` | 新增的桌面逻辑键定义；不含实体 PCB 引脚 |
+| `desktop/include/keypad_io.h` | 新增的桌面输入接口 |
+| `desktop/` 其余文件 | 恢复桌面兼容层和版本接口 |
+| `gfx_ssd1306` | 增加 `FAMI32_DESKTOP` 显示后端边界 |
+| `gui_common.h`、`src_config.c`、`gui_settings.cpp` | 增加桌面平台条件编译 |
+| `docs/desktop-simulator.md` | 新增构建和键盘映射速查 |
+| `.gitignore` | 忽略 PC 模拟器运行时数据目录 `fami32_data/` |
+
+`main/CMakeLists.txt` 未引用 `desktop/`；ESP-IDF 固件构建不包含 PC 键盘映射和桌面入口。`sdkconfig.old` 仍保持删除。

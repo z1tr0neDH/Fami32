@@ -22,6 +22,10 @@ GfxOledSSD1306::~GfxOledSSD1306() {
 
 esp_err_t GfxOledSSD1306::begin(esp_lcd_panel_handle_t panel)
 {
+#ifdef FAMI32_DESKTOP
+    panel_ = panel;
+    return buffer_ == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
+#else
     if (panel == nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -31,10 +35,15 @@ esp_err_t GfxOledSSD1306::begin(esp_lcd_panel_handle_t panel)
 
     panel_ = panel;
     return ESP_OK;
+#endif
 }
 
 bool GfxOledSSD1306::isReady() const {
+#ifdef FAMI32_DESKTOP
+    return buffer_ != nullptr;
+#else
     return (panel_ != nullptr) && (buffer_ != nullptr);
+#endif
 }
 
 uint8_t *GfxOledSSD1306::buffer() {
@@ -286,6 +295,11 @@ void GfxOledSSD1306::clearDisplay() {
 esp_err_t GfxOledSSD1306::display() {
     if (!isReady()) return ESP_ERR_INVALID_STATE;
     memcpy(flush_buffer_, buffer_, buffer_size_);
+#ifdef FAMI32_DESKTOP
+    desktop_present_frame(flush_buffer_, WIDTH, HEIGHT);
+    return ESP_OK;
+#else
     taskYIELD();
     return esp_lcd_panel_draw_bitmap(panel_, 0, 0, WIDTH, HEIGHT, flush_buffer_);
+#endif
 }

@@ -8,10 +8,14 @@
 #include <vector>
 #include <cstdlib>
 
-// ESP32 framework and device drivers
+// Platform/framework specific includes.
+#ifdef FAMI32_DESKTOP
+#include "desktop_platform.h"
+#else
 #include <esp_log.h>
 #include <esp_system.h>
 #include <driver/i2s_std.h>
+#endif
 #include <gfx_oled_ssd1306.h>
 #include "keypad_io.h"
 #include <USBMIDI.h>

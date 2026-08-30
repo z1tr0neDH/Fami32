@@ -282,8 +282,13 @@ int select_option(const char *title, const char *options[], int option_count, in
 }
 
 SettingItem sample_rate_item() {
+#ifdef FAMI32_DESKTOP
+    return {"SAMPLE RATE", "SAMPLE_RATE", SettingKind::Integer, &SAMP_RATE, nullptr,
+            10800, 192000, 6000, true};
+#else
     return {"SAMPLE RATE", "SAMPLE_RATE", SettingKind::Integer, &SAMP_RATE, nullptr,
             48000, 48000, 1, false};
+#endif
 }
 
 SettingItem engine_speed_item() {

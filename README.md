@@ -1,6 +1,6 @@
 # Fami32
 
-完整的界面说明与操作手册见 [docs/guide.md](docs/guide.md)。
+完整操作手册见 [docs/guide.md](docs/guide.md)；PC 模拟器见 [docs/desktop-simulator.md](docs/desktop-simulator.md)；适配修改范围见 [docs/modification_index.md](docs/modification_index.md)。
 
 ## 1. 硬件风险警告
 

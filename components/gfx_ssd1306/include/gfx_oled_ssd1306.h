@@ -4,10 +4,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef FAMI32_DESKTOP
+#include "desktop_platform.h"
+typedef void *esp_lcd_panel_handle_t;
+#else
 extern "C" {
 #include "esp_err.h"
 #include "esp_lcd_panel_ops.h"
 }
+#endif
 
 #include "Adafruit_GFX.h"
 
