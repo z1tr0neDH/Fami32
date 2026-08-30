@@ -1,0 +1,44 @@
+name: Build Windows simulator
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-windows-simulator.yml
+      - Makefile
+      - desktop/**
+      - main/**
+      - components/**
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+
+      - name: Build fami32.exe
+        shell: msys2 {0}
+        run: make windows
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fami32-windows
+          path: build/windows/fami32.exe
+          if-no-files-found: error
